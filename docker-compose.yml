@@ -1,0 +1,76 @@
+version: "3"
+
+services:
+  reverse-proxy:
+    image: traefik
+    command: --api.insecure=true --providers.docker
+    restart: always
+    ports: 
+      - "443:443"
+      - "80:80"
+      - "8080:8080"
+    volumes: 
+      - ./traefik.toml:/Users/binbin.chen/Material/workspace/github/traefik-example/traefik.arthur.local.toml
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./acme.json:/acme.json
+      - ./log:/log
+    container_name: traefik
+    env_file: .env
+    labels: 
+      - traefik.http.routers.api.rule=Host(`traefik.arthur.local`)
+      - traefik.http.routers.api.service=api@internal
+      - traefik.http.routers.whoami.tls=true
+      - traefik.http.routers.whoami.tls.certresolver=le
+
+  # expose headers
+  whoami:
+    image: containous/whoami
+    restart: always
+    labels: 
+      # set Host = whoami.docker.localhost with domain access
+      - traefik.http.routers.whoami.rule=Host(`whoami.docker.localhost`)
+      - traefik.http.routers.whoami.tls=true
+      - traefik.http.routers.whoami.tls.certresolver=le
+  dns:
+    image: jpillora/dnsmasq
+    restart: always
+    ports: 
+      - "53:53/udp"
+    volumes: 
+      - ./dnsmasq.conf:/etc/dnsmasq.conf
+      - ./resolv.conf:/etc/resolv.conf
+
+  openvpn:
+    cap_add: 
+      - NET_ADMIN
+    image: kylemanna/openvpn
+    container_name: openvpn
+    ports: 
+      - "1194:1194/udp"
+    restart: always
+    volumes: 
+      - ./openvpn-data/conf:/etc/openvpn
+
+  rdb:
+    image: postgres:12-alpine
+    restart: always
+    ports: 
+      - 5432:5432
+    volumes: 
+      - ./pg-data:/var/lib/postgresql/data
+    labels: 
+      - traefik.http.routers.db.rule=Host(`db.arthur.local`)
+
+  redis:
+    image: redis:6-alpine
+    restart: always
+    ports: 
+      - 6379:6379
+    labels: 
+      - traefik.http.routers.db.rule=Host(`redis.arthur.local`)
+
+# use existed traefik network
+networks:
+  default:
+    external:
+      name: traefik-example_default
